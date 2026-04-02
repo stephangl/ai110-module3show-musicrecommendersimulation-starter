@@ -138,6 +138,51 @@ Describe your scoring logic in plain language.
 - What information about the user does it use
 - How does it turn those into a number
 
+This music recommender will use the energy of a song, acousticness, genre, and mood.
+
+ascore = e^(-(song_value - user_preference)² / (2σ²))
+  Where σ (sigma) controls the "tolerance width":
+  - Small σ (e.g. 0.1) = strict, only very close songs score high
+  - Large σ (e.g. 0.3) = lenient, similar songs still score reasonably
+  well
+
+
+  ┌───────────┬─────────────┬───────┬───────┬───────┐
+  │ User pref │ Song energy │ σ=0.1 │ σ=0.2 │ σ=0.3 │
+  ├───────────┼─────────────┼───────┼───────┼───────┤
+  │ 0.8       │ 0.82        │ 0.98  │ 0.99  │ 1.00  │
+  ├───────────┼─────────────┼───────┼───────┼───────┤
+  │ 0.8       │ 0.60        │ 0.14  │ 0.61  │ 0.80  │
+  ├───────────┼─────────────┼───────┼───────┼───────┤
+  │ 0.8       │ 0.30        │ ~0.00 │ 0.04  │ 0.25  │
+  └───────────┴─────────────┴───────┴───────┴───────┘
+
+  For genre and mood, it's binary — either it matches or it doesn't:
+
+  score = 1  if song_genre == user_preferred_genre
+  score = 0  otherwise
+
+    Combining Into a Final Score
+
+  Weighted sum across all features:
+
+  final_score = (w_energy     × energy_score)
+              + (w_acousticness × acousticness_score)
+              + (w_genre      × genre_score)
+              + (w_mood       × mood_score)
+
+  Where weights sum to 1.0. Suggested starting weights:
+
+  w_energy        = 0.30
+  w_acousticness  = 0.30
+  w_genre         = 0.25
+  w_mood          = 0.15
+  ─────────────────────────
+  total           = 1.00
+
+  Energy and acousticness get more weight because they have the strongest discriminating power in the dataset.
+
+
 Try to avoid code in this section, treat it like an explanation to a non programmer.
 
 ---
