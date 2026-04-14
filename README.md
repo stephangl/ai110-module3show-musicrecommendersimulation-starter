@@ -11,23 +11,31 @@ Your goal is to:
 - Evaluate what your system gets right and wrong
 - Reflect on how this mirrors real world AI recommenders
 
-Replace this paragraph with your own summary of what your version does.
+VibeMatch 1.0 scores every song in a 15-song catalog against a user's genre, mood, energy, and acoustic preferences, then returns the top 5 matches. Scoring is a weighted sum: genre match is worth the most (0.30), followed by mood (0.25), energy closeness (0.25), acoustic preference (0.10), and a valence bonus for emotionally aligned songs (0.10). If a preference is not set, that component is skipped and the remaining weights still apply.
 
 ---
 
 ## How The System Works
 
-Explain your design in plain language.
+Each `Song` stores: `title`, `artist`, `genre`, `mood`, `energy` (0–1), `tempo_bpm`, `valence` (0–1, how positive the song feels), `danceability` (0–1), and `acousticness` (0–1).
 
-Some prompts to answer:
+The `UserProfile` stores four preferences:
+- `favorite_genre` — e.g. `"pop"` or `"lofi"`
+- `favorite_mood` — e.g. `"happy"` or `"chill"`
+- `target_energy` — a float like `0.8` for high-energy or `0.3` for mellow
+- `likes_acoustic` — `True` or `False`
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+The `Recommender` calls `score_song()` on every song and returns the top `k` by score. Scoring works as a weighted sum:
 
-You can include a simple diagram or bullet list if helpful.
+| Feature | Rule | Max weight |
+|---|---|---|
+| Genre | Exact match = 0.30; partial substring = 0.15 | 0.30 |
+| Mood | Exact match = 0.25; partial substring = 0.10 | 0.25 |
+| Energy | `0.25 × (1 − |user_energy − song_energy|)` | 0.25 |
+| Acousticness | Preference direction matches song level | 0.10 |
+| Valence bonus | Positive moods reward high valence; chill/melancholic reward low valence | 0.10 |
+
+Songs are ranked by score descending and the top 5 are returned.
 
 ---
 
@@ -68,25 +76,23 @@ You can add more tests in `tests/test_recommender.py`.
 
 ## Experiments You Tried
 
-Use this section to document the experiments you ran. For example:
-
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
+- **Conflicting preferences (high energy + sad mood):** Genre and energy dominated the score, so the sad-mood preference was often overridden. The top results were energetic songs that didn't match the intended vibe.
+- **Substring genre trick:** Setting genre to `"pop"` matched `"indie pop"` via partial matching, giving unintended score boosts. This revealed the substring comparison is too loose.
+- **Substring mood trick:** Setting mood to `"ill"` matched `"chill"` songs — a false positive that proved edge-case testing matters.
+- **Valence bonus gap:** Moods like `"angry"` and `"excited"` don't qualify for the valence bonus, silently disadvantaging users with those preferences.
+- **Weight shift experiment (genre halved to 0.15, energy doubled to 0.50):** Helped the angry metal profile but hurt users whose genre preference was the strongest signal — making results different, not uniformly better.
+- **Energy = 0.5 (center):** Almost no change in rankings because every song is within 0.5 of center; this exposed that a centered energy preference has almost no discriminating power.
 
 ---
 
 ## Limitations and Risks
 
-Summarize some limitations of your recommender.
-
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+- The 15-song catalog is tiny — users who prefer jazz or country always see the same single song regardless of energy or mood preferences.
+- Substring genre and mood matching causes false positives (e.g. `"ill"` matches `"chill"`).
+- The system assumes one genre, one mood, and one energy level per user — it can't handle mixed tastes or context (working out vs. studying).
+- Some moods (`"angry"`, `"excited"`) are excluded from the valence bonus, silently giving them lower scores.
+- It has no memory — every session starts fresh with no history of what the user has already heard or rated.
+- Energy = 0.5 is nearly useless as a signal because it's equidistant from every song in the catalog.
 
 ---
 
@@ -96,10 +102,9 @@ Read and complete `model_card.md`:
 
 [**Model Card**](model_card.md)
 
-Write 1 to 2 paragraphs here about what you learned:
+Building this showed me that a scoring-based recommender feels surprisingly intelligent even when the logic is just arithmetic. Assigning weights to genre, mood, and energy produces rankings that seem reasonable — until you probe edge cases. The substring mood bug ("ill" matching "chill") was the clearest example: the code looked correct at a glance, but it rewarded the wrong songs. That taught me that correctness in a recommender isn't just about the math working — it's about whether the assumptions behind each comparison actually hold.
 
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
+The bias angle was less obvious but more important. The system implicitly favors high-energy, pop-adjacent users because the catalog has more songs in that space and the valence bonus only rewards a subset of moods. Users who like metal, jazz, or folk get structurally worse recommendations not because the weights are wrong, but because the data was never balanced in the first place. That mirrors how real recommenders inherit the biases of whoever curated the training data — fairness problems often hide in the dataset, not the algorithm.
 
 
 ---
@@ -242,6 +247,8 @@ ascore = e^(-(song_value - user_preference)² / (2σ²))
             └─────────────────────────────────┘
 
 ![Alt text](load.png)
+
+![Alt text](summary.png)
 
 Try to avoid code in this section, treat it like an explanation to a non programmer.
 
